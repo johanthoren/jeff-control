@@ -386,6 +386,7 @@ impl Server {
                 ingress,
             } => {
                 let frame = decode_request_frame(frame);
+                drop(ingress);
                 pending.fetch_sub(1, Ordering::AcqRel);
                 match frame {
                     Ok(frame)
@@ -399,7 +400,6 @@ impl Server {
                     Ok(_) => {}
                     Err(_) => self.close_connection(connection),
                 }
-                drop(ingress);
             }
             OwnerMessage::FrameTooLarge {
                 connection,

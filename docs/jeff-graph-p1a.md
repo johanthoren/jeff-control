@@ -1,5 +1,11 @@
 # P1a standalone jeff graph design
 
+> Historical phase design. The daemon and graph libraries were implemented; the
+> standalone `jeff graph` client was not shipped. Development is paused indefinitely.
+> Scope and acceptance criteria below describe the original plan, not an active
+> roadmap. See the [repository README](../README.md#what-is-implemented) for the
+> preserved implementation.
+
 > Moved here from the jeff repository, where it lived at
 > `docs/specs/jeff-graph-p1a.md`. Repository-relative paths in this
 > document refer to that original layout: `control/` is this repository's root,

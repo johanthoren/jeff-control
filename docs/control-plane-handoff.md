@@ -1,5 +1,10 @@
 # Jeff Control: implementation handoff
 
+> Historical handoff. No successor implementation is scheduled. The instructions
+> below preserve the original assignment and repository layout; they do not
+> authorize resuming it. See the [repository README](../README.md#what-is-implemented)
+> for the implemented daemon and libraries. The interactive client was not shipped.
+
 > Moved here from the jeff repository, where it lived at
 > `docs/specs/control-plane-handoff.md`. Repository-relative paths in this
 > document refer to that original layout: `control/` is this repository's root,
