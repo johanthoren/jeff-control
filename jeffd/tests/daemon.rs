@@ -3023,11 +3023,11 @@ fn cycle_one_contract_oversized_input_shutdown_cannot_block_reader_join() {
 fn cycle_one_contract_ingress_full_closes_only_the_offender() {
     let mut fixture = Fixture::new(true);
     fixture.write_registry(json!([fixture.default_record()]));
-    fixture.set_snapshot("2026-08-11T03:02:00Z", &"x".repeat(MAX_FRAME_BYTES / 4));
-    fixture.start_with_env(&[(
-        "_JEFFD_TEST_LIMITS",
-        Path::new("ingress=4,in_flight=16,egress_frames=32,egress_bytes=67108864"),
-    )]);
+    let root = fixture.home.parent().expect("fixture root").to_path_buf();
+    let mut owner_gate = RecoveryGate::new(&root, "ingress-owner");
+    let mut environment = owner_gate.environment().to_vec();
+    environment.push(("_JEFFD_TEST_LIMITS", Path::new("ingress=4,in_flight=16")));
+    fixture.start_with_env(&environment);
     let mut warm = fixture.client();
     let subscribed = warm.request(
         "warm-sub",
@@ -3037,6 +3037,16 @@ fn cycle_one_contract_ingress_full_closes_only_the_offender() {
     assert!(assert_ok(&subscribed)["subscriptionId"].is_string());
 
     let mut offender = bounded_raw_client(&fixture.socket);
+    raw_send(
+        &mut offender,
+        &json!({"v": 1, "kind": "req", "id": "ready", "method": "server.hello", "params": {}}),
+    );
+    let mut ready = BufReader::new(offender.try_clone().expect("clone offender"));
+    let mut line = String::new();
+    ready.read_line(&mut line).expect("read offender hello");
+    assert_ok(&serde_json::from_str::<Value>(&line).expect("decode offender hello"));
+    owner_gate.arm();
+    owner_gate.wait();
     raw_send_request_burst(
         &mut offender,
         8,
@@ -3044,6 +3054,7 @@ fn cycle_one_contract_ingress_full_closes_only_the_offender() {
         &json!({"projectId": "project-a"}),
     );
     raw_read_to_eof(&mut offender, 16 * 1024 * 1024);
+    owner_gate.release();
     fixture.set_snapshot("2026-08-11T03:02:01Z", "healthy after ingress saturation");
     fixture.touch_project(&fixture.project, "after-ingress-saturation");
     let replaced = warm.recv_until(|frame| frame["name"] == "snapshot.replaced");

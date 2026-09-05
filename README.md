@@ -1,82 +1,112 @@
 # jeff-control
 
-A local projection daemon and terminal graph client for
-[jeff](https://github.com/johanthoren/jeff), a quality control plane for
-agentic software work.
-
-Jeff records task state as plain files in a project's `.jeff/` ledger. This
-repository holds the Rust that reads those projections and draws them: a
-long-lived daemon that watches registered projects, and the layout and
-viewport code for a task-DAG view of what each one is doing.
-
-## Why it lives apart
-
-Jeff ships as a Node plugin for coding agents and never carried this Rust in
-its published package. The two are related by protocol, not by build: `jeffd`
-never parses a ledger itself. Every read goes through the project's own
-installed `cook snapshot --json`. That constraint keeps schema knowledge in
-one place and makes the daemon immune to per-project version skew, which is
-also what makes the split clean.
-
-## State
-
-The daemon is finished. The client is not.
-
-| Crate | Lines (src / tests) | State |
-|---|---|---|
-| `jeffd` | 3,851 / 6,744 | Complete. Unix socket server, JSON request and event protocol, project registry, filesystem watch with debounce, snapshot invocation, lifecycle management. |
-| `jeff-graph` | 792 / 489 | Library complete. Viewport math, layout pipeline with caching, canvas widget, topology model with selection and degradation handling. |
-| `jeff-project` | 344 / 424 | Complete. Registry and per-project configuration types. |
-| `jeff` | 21 / 75 | Stub. Prints help and exits. |
-
-The gap is deliberate about where it stopped, not hidden: `jeff-graph` has
-the components a task-DAG TUI needs, and nothing drives them. The `jeff`
-binary was specified to stay help-only until the client shipped, and the
-client never did. Zoom, pan, mouse and keyboard selection, the completed-task
-toggle, and claim badges were all specified and never built.
-
-What works today is `jeffd start`, `jeffd status`, and `jeffd stop`, serving
-live graph projections over a Unix domain socket to any client that speaks
-the protocol.
-
-## Build
-
-```sh
-cargo test --locked -- --test-threads=1
-```
-
-The daemon suite runs single-threaded because it binds real sockets and
-watches real directories. Two backpressure tests
-(`task_236_council_contract_*`) are sensitive to host socket buffer limits
-and can fail outside CI.
-
-## Design record
-
-The specs are the reason to read this repository. They were written as
-cold-context contracts, meaning any implementer with the repository and the
-document needs no conversation history to continue.
-
-- [`docs/control-plane-vision.md`](docs/control-plane-vision.md): the product
-  vision, locked decisions, TUI feasibility survey, runtime and coexistence,
-  invariants, phases, and an architecture review.
-- [`docs/jeff-graph-p1a.md`](docs/jeff-graph-p1a.md): the phase design for the
-  standalone graph client, including socket protocol, invocation contract,
-  projection and cache behavior, viewport math, and mechanical acceptance
-  checks.
-- [`docs/control-plane-handoff.md`](docs/control-plane-handoff.md): the
-  implementation brief handing the work from one model to another.
-
-Two decisions in there carry most of the weight. The client is a terminal
-application rather than a browser one, because a localhost HTTP API is a
-forged-grant surface while a Unix socket reduces authorization to file
-permissions. And the daemon delegates all ledger access to `cook`, which is
-what allows one daemon to watch projects running different versions of jeff.
+A Rust projection daemon for [jeff](https://github.com/johanthoren/jeff).
+It watches registered projects and serves task snapshots and live updates over
+a local Unix socket. The repository also contains graph layout and viewport
+libraries. The interactive graph client was not shipped.
 
 ## Status
 
-Not under active development. Jeff itself is stable and no longer being
-extended, and this client stopped when that did. The code builds, the daemon
-works, and the specs describe what a finished client would do.
+Development is paused indefinitely. I built this alongside Jeff, which served
+me exceptionally well as part of the tooling I used to make software. With
+[pstack](https://github.com/cursor/plugins/tree/main/pstack), that part of my
+setup is good enough for me to leave it alone and focus on making things.
+
+The daemon, libraries, and design record remain available for use and study.
+There is no commitment to compatibility updates or to finishing the client.
+The [Jeff README](https://github.com/johanthoren/jeff#status) records the broader
+lineage and why I moved on.
+
+## What is implemented
+
+- **`jeffd`** watches projects, invokes their installed `cook snapshot --json`,
+  and serves JSON requests and subscription events over a Unix socket.
+  `jeffd start` runs in the foreground; `jeffd status` checks the running
+  daemon; `jeffd stop` requests shutdown.
+  [Daemon contracts](jeffd/tests/daemon.rs) exercise real sockets,
+  filesystem events, process lifecycle, and resource limits.
+- **`jeff-project`** defines the project registry and per-project configuration.
+  Its [contracts](jeff-project/tests/contracts.rs) cover snapshot compatibility
+  and protocol messages.
+- **`jeff-graph`** contains graph topology, cached layout, viewport math, and a
+  canvas widget. Its [contracts](jeff-graph/tests/contracts.rs) exercise those
+  components without an interactive application.
+- **`jeff`** prints help and exits. There is no working `jeff graph` command.
+  The planned zoom, pan, selection, completed-task toggle, and claim-badge
+  interactions are not connected to a client.
+
+## Build and check
+
+Use the Rust toolchain pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
+The daemon targets Unix systems. This snapshot was verified on Linux x86_64
+with Rust 1.98.0 and Node.js 24.20.0; other Unix platforms were not reverified.
+The demonstration also needs Git. The CI workflow repeats the build, serial
+suite, and demonstration on Linux.
+
+```sh
+cargo build --workspace --locked
+cargo test --workspace --locked -- --test-threads=1
+```
+
+The serial test command is the reference invocation for the daemon's real
+socket and filesystem tests. Keep the resource-limit and backpressure contracts
+in the run; they are part of what the daemon promises.
+
+## Run the daemon example
+
+The example uses the real Jeff 6.7.0 projection command. From this repository,
+obtain that version in a sibling checkout if you do not already have it:
+
+```sh
+git clone --branch 6.7.0 --depth 1 https://github.com/johanthoren/jeff.git ../jeff-6.7.0
+node scripts/demo.mjs ../jeff-6.7.0/src/cli/cook.js
+```
+
+You can pass another checkout's `src/cli/cook.js` path instead. The checked
+projection command uses Node's standard library and does not require an npm
+install or an agent account.
+
+The example creates a synthetic task in a temporary project, starts the daemon
+with an isolated home directory and socket, reads a snapshot, and subscribes
+to updates. It changes the example task and checks that the replacement
+snapshot contains the change. It then stops the daemon and checks shutdown
+and cleanup. The example does not register or modify your projects.
+
+[`scripts/demo.mjs`](scripts/demo.mjs) is also run by
+[CI](.github/workflows/ci.yml), against a pinned Jeff commit. It demonstrates
+the daemon protocol, not the unfinished TUI or a full agent workflow.
+
+## Why it lives apart
+
+Jeff ships as a Node plugin for coding agents. Its package never carried this
+Rust workspace. The two communicate through a versioned projection protocol.
+`jeffd` asks each project's installed `cook snapshot --json` to read the ledger;
+it does not parse `.jeff` task files itself.
+
+This keeps ledger-schema knowledge in Jeff. Projects can use different Jeff
+versions while their snapshot schemas remain within the daemon's supported
+range. The daemon supports snapshot schema version 1 and socket protocol
+version 1. It does not promise compatibility with future schema changes.
+
+The Unix socket is local and owner-only. Filesystem permissions control access;
+the daemon does not expose a browser-facing HTTP API. This is a local tool for
+a trusted operator, not a sandbox for hostile agents.
+
+## Design record
+
+These documents preserve the decisions and implementation plans from the
+control-plane track. They include work that was never built. Their phase names,
+future tense, and original repository paths describe that historical plan;
+they are not an active roadmap. Use the implemented behavior above and the
+executable contracts to determine what this checkout provides.
+
+- [`docs/control-plane-vision.md`](docs/control-plane-vision.md) records the
+  product vision, terminal-client feasibility survey, runtime boundaries,
+  phases, and architecture review.
+- [`docs/jeff-graph-p1a.md`](docs/jeff-graph-p1a.md) specifies the daemon protocol,
+  projection and cache behavior, and the unshipped standalone graph client.
+- [`docs/control-plane-handoff.md`](docs/control-plane-handoff.md) preserves
+  the implementation handoff and its original constraints.
 
 ## License
 

@@ -1,5 +1,10 @@
 # Control plane vision: Jeff beside the terminal
 
+> Historical design record. Development is paused indefinitely. The phases and
+> future work below describe the original plan, not a commitment to continue it.
+> See the [repository README](../README.md#what-is-implemented) for the implemented
+> daemon and libraries; the interactive client was not shipped.
+
 > Moved here from the jeff repository, where it lived at
 > `docs/specs/control-plane-vision.md`. Repository-relative paths in this
 > document refer to that original layout: `control/` is this repository's root,
